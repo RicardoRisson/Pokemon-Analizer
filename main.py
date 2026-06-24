@@ -1,62 +1,24 @@
 import customtkinter as ctk
+import os
+import pickle
+from PIL import Image # Necessário para processar as imagens antes do CTkImage
+
+# Importando os módulos do projeto
+from efetivos import TYPE_DATA, TYPE_NAMES, EFFECTIVENESS
+from disponiveis import POKEMON_DATABASE
+from moves import Move
 
 # ==========================================
-# PALETA DE CORES OFICIAIS DOS TIPOS POKÉMON
-# ==========================================
-TYPE_DATA = {
-    "Normal":   {"id": 0,  "color": "#A8A77A"},
-    "Fire":     {"id": 1,  "color": "#EE8130"},
-    "Water":    {"id": 2,  "color": "#6390F0"},
-    "Electric": {"id": 3,  "color": "#F7D02C"},
-    "Grass":    {"id": 4,  "color": "#7AC74C"},
-    "Ice":      {"id": 5,  "color": "#96D9D6"},
-    "Fighting": {"id": 6,  "color": "#C22E28"},
-    "Poison":   {"id": 7,  "color": "#A33EA1"},
-    "Ground":   {"id": 8,  "color": "#E2BF65"},
-    "Flying":   {"id": 9,  "color": "#A98FF3"},
-    "Psychic":  {"id": 10, "color": "#F95587"},
-    "Bug":      {"id": 11, "color": "#A6B91A"},
-    "Rock":     {"id": 12, "color": "#B6A136"},
-    "Ghost":    {"id": 13, "color": "#735797"},
-    "Dragon":   {"id": 14, "color": "#6F35FC"},
-    "Dark":     {"id": 15, "color": "#705746"},
-    "Steel":    {"id": 16, "color": "#B7B7CE"},
-    "Fairy":    {"id": 17, "color": "#D685AD"}
-}
-
-TYPE_NAMES = list(TYPE_DATA.keys())
-
-# Matriz de Efetividade (Atacante linha -> Defensor coluna)
-EFFECTIVENESS = [
-    [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,  5,  0, 10, 10,  5, 10], # NORMAL
-    [10,  5,  5, 10, 20, 20, 10, 10, 10, 10, 10, 20,  5, 10,  5, 10, 20, 10], # FIRE
-    [10, 20,  5, 10,  5, 10, 10, 10, 20, 10, 10, 10, 20, 10,  5, 10, 10, 10], # WATER
-    [10, 10, 20,  5,  5, 10, 10, 10,  0, 20, 10, 10, 10, 10,  5, 10, 10, 10], # ELECTRIC
-    [10,  5, 20,  5,  5, 10, 10,  5, 20,  5, 10,  5, 20, 10,  5, 10,  5, 10], # GRASS
-    [10,  5,  5, 10, 20,  5, 10, 10, 20, 20, 10, 10, 10, 10, 20, 10,  5, 10], # ICE
-    [20, 10, 10, 10, 10, 20, 10,  5, 10,  5,  5,  5, 20,  0, 10, 20, 20,  5], # FIGHTING
-    [10, 10, 10, 10, 20, 10, 10,  5,  5, 10, 10, 10,  5,  5, 10, 10,  0, 20], # POISON
-    [10, 20, 10, 20,  5, 10, 10, 20, 10,  0, 10,  5, 20, 10, 10, 10, 20, 10], # GROUND
-    [10, 10, 10,  5, 20, 10, 20, 10, 10, 10, 10, 20,  5, 10, 10, 10,  5, 10], # FLYING
-    [10, 10, 10, 10, 10, 10, 20, 20, 10, 10,  5, 10, 10, 10, 10,  0,  5, 10], # PSYCHIC
-    [10,  5, 10, 10, 20, 10,  5,  5, 10,  5, 20, 10, 10,  5, 10, 20,  5,  5], # BUG
-    [10, 20, 10, 10, 10, 20,  5, 10,  5, 20, 10, 20, 10, 10, 10, 10,  5, 10], # ROCK
-    [ 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 20, 10,  5, 10, 10], # GHOST
-    [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 20, 10,  5,  0], # DRAGON
-    [10, 10, 10, 10, 10, 10,  5, 10, 10, 10, 20, 10, 10, 20, 10,  5, 10,  5], # DARK
-    [10,  5,  5,  5, 10, 20, 10, 10, 10, 10, 10, 10, 20, 10, 10, 10,  5, 20], # STEEL
-    [10,  5, 10, 10, 10, 10, 20,  5, 10, 10, 10, 10, 10, 10, 20, 20,  5, 10]  # FAIRY
-]
-
-# ==========================================
-# CLASSES DE ESTRUTURA
+# CLASSES DE ESTRUTURA E CÁLCULO
 # ==========================================
 
 class Pokemon:
-    def __init__(self, name, type1, type2=None):
+    def __init__(self, name, type1, type2=None, prefer="Especial"):
         self.name = name
         self.type1 = type1
         self.type2 = type2
+        self.prefer = prefer
+        self.moves = [None, None, None, None]
         self.score = 0
 
     def get_type_str(self):
@@ -74,36 +36,52 @@ class EnemyPokemon:
         t2_name = f"/{TYPE_NAMES[type2]}" if type2 is not None else ""
         self.display_name = f"{t1_name}{t2_name}"
 
-def get_damage_modifier(attacker, def1, def2):
-    if attacker is None:
+def get_damage_modifier(attacker_type, def1, def2):
+    if attacker_type is None:
         return 10
-    mod = EFFECTIVENESS[attacker][def1]
+    mod = EFFECTIVENESS[attacker_type][def1]
     if def2 is not None:
-        mod2 = EFFECTIVENESS[attacker][def2]
+        mod2 = EFFECTIVENESS[attacker_type][def2]
         mod = (mod * mod2) // 10
     return mod
 
 def evaluate_team(my_team, enemy_team):
     for p in my_team:
         p.score = 0
-        
         for enemy in enemy_team:
             if enemy.type1 is None:
                 continue
 
             match_score = 0
+            max_move_dmg = 0
+            utility_score = 0
 
-            # Ofensiva
-            dmg_t1 = get_damage_modifier(p.type1, enemy.type1, enemy.type2)
-            dmg_t2 = get_damage_modifier(p.type2, enemy.type1, enemy.type2) if p.type2 is not None else 0
-            max_dmg_out = max(dmg_t1, dmg_t2)
+            for move in p.moves:
+                if move is None or not move.name:
+                    continue
+                
+                if move.move_kind == "Buff/Debuff":
+                    utility_score += 2
+                    continue
+                
+                dmg = get_damage_modifier(move.move_type, enemy.type1, enemy.type2)
+                
+                if move.move_type == p.type1 or move.move_type == p.type2:
+                    dmg = (dmg * 15) // 10
 
-            if max_dmg_out > 10:
-                match_score += 4
-            elif max_dmg_out == 10:
-                match_score += 2
+                if move.category == p.prefer:
+                    dmg += 2
 
-            # Defesa
+                if dmg > max_move_dmg:
+                    max_move_dmg = dmg
+
+            if max_move_dmg > 15:     match_score += 7
+            elif max_move_dmg > 10:   match_score += 4
+            elif max_move_dmg == 10:  match_score += 2
+            elif max_move_dmg > 0:    match_score -= 1
+            
+            match_score += utility_score
+
             dmg_in_t1 = get_damage_modifier(enemy.type1, p.type1, p.type2)
             dmg_in_t2 = get_damage_modifier(enemy.type2, p.type1, p.type2) if enemy.type2 is not None else 0
             max_dmg_in = max(dmg_in_t1, dmg_in_t2)
@@ -121,193 +99,439 @@ def evaluate_team(my_team, enemy_team):
             p.score += match_score
 
 # ==========================================
+# FUNÇÃO PARA CARREGAR ARTES (SPRITES)
+# ==========================================
+
+def carrega_artes(pokemon_name, tamanho=(40, 40)):
+    """
+    Busca a imagem baseada no nome exato do Pokémon dentro da pasta 'artes'.
+    Mantém espaços e formatos especiais (ex: 'Tauros Paldean Form Combat Breed.png').
+    """
+    # Remove caracteres que dão erro em caminhos de arquivos do Windows/Linux (caso existam no nome)
+    nome_limpo = pokemon_name.replace("/", "_").replace("?", "").replace(":", "").strip()
+    caminho_imagem = os.path.join("artes", f"{nome_limpo}.png")
+    
+    if os.path.exists(caminho_imagem):
+        img_pil = Image.open(caminho_imagem)
+    else:
+        # Imagem de backup caso falte alguma arte na sua pasta
+        caminho_default = os.path.join("artes", "default.png")
+        if os.path.exists(caminho_default):
+            img_pil = Image.open(caminho_default)
+        else:
+            # Cria um quadrado transparente temporário para não quebrar a execução
+            img_pil = Image.new("RGBA", tamanho, (0, 0, 0, 0))
+            
+    return ctk.CTkImage(light_image=img_pil, dark_image=img_pil, size=tamanho)
+
+
+# ==========================================
 # INTERFACE GRÁFICA (GUI)
 # ==========================================
+
+BIN_FILE = "my_pokemon_team.bin"
 
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Pokémon Team Analyzer")
-        self.geometry("850x650")
+        self.title("Pokémon Team Analyzer PRO")
+        self.geometry("1120x840")
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        # Seu Time Atual
-        self.my_team = [
-            Pokemon("Snorlax", 0),                 # Normal
-            Pokemon("Dragonite", 14, 9),           # Dragon / Flying
-            Pokemon("Greninja", 15, 2),            # Dark / Water
-            Pokemon("Hawlucha", 6, 9),             # Fighting / Flying
-            Pokemon("Typhlosion Corrupt", 1, 15),  # Fire / Dark
-            Pokemon("Sceptile", 4)                 # Grass
-        ]
-        
+        self.my_team = []
         self.enemy_team = []
+        self.selected_team_indices = [] 
         self.current_selected_types = []
+        
+        self.active_pokemon_index = 0 
 
-        # ======================================
-        # TELA 1: SELEÇÃO DE TIPOS
-        # ======================================
+        self.frame_team_setup = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_moves_setup = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_selection = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_results = ctk.CTkFrame(self, fg_color="transparent")
+
+        self.load_team_from_bin()
+
+    def load_team_from_bin(self):
+        if os.path.exists(BIN_FILE):
+            try:
+                with open(BIN_FILE, "rb") as f:
+                    saved_data = pickle.load(f)
+                    self.my_team = []
+                    for p in saved_data:
+                        pk = Pokemon(p['name'], p['t1'], p['t2'], p.get('prefer', 'Especial'))
+                        for idx, m_data in enumerate(p.get('moves', [])):
+                            if m_data:
+                                pk.moves[idx] = Move(m_data['name'], m_data['type_str'], m_data['cat'], m_data['kind'])
+                        self.my_team.append(pk)
+                self.build_main_selection_screen()
+            except Exception:
+                self.build_team_setup_screen() 
+        else:
+            self.build_team_setup_screen()
+
+    def save_team_to_bin(self):
+        data_to_save = []
+        for p in self.my_team:
+            moves_data = []
+            for m in p.moves:
+                if m: data_to_save.append({'name': m.name, 'type_str': m.move_type_str, 'cat': m.category, 'kind': m.move_kind})
+                else: data_to_save.append(None)
+            data_to_save.append({'name': p.name, 't1': p.type1, 't2': p.type2, 'prefer': p.prefer, 'moves': moves_data})
+        with open(BIN_FILE, "wb") as f:
+            pickle.dump(data_to_save, f)
+
+    # --- TELA 1: SELEÇÃO DE INTEGRANTES ---
+    def build_team_setup_screen(self):
+        self.frame_selection.pack_forget()
+        self.frame_results.pack_forget()
+        self.frame_moves_setup.pack_forget()
+        self.frame_team_setup.destroy()
+        
+        self.frame_team_setup = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_team_setup.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(self.frame_team_setup, text="Passo 1: Escolha Seus 5 Pokémon", font=("Arial", 22, "bold"), text_color="#F7D02C").pack(pady=5)
+
+        top_bar = ctk.CTkFrame(self.frame_team_setup, fg_color="transparent")
+        top_bar.pack(fill="x", padx=10, pady=5)
+
+        ctk.CTkButton(top_bar, text="❌ Desmarcar Todos", font=("Arial", 12, "bold"), fg_color="#A52A2A", hover_color="#8B0000", command=self.clear_all_selections).pack(side="left")
+        self.lbl_setup_counter = ctk.CTkLabel(top_bar, text="Selecionados: 0 de 5", font=("Arial", 14, "italic"))
+        self.lbl_setup_counter.pack(side="right")
+
+        self.search_var = ctk.StringVar()
+        self.search_var.trace_add("write", self.filter_pokemon)
+        ctk.CTkEntry(self.frame_team_setup, placeholder_text="Digite o nome para filtrar...", textvariable=self.search_var, width=400, height=35).pack(pady=10)
+
+        self.scroll_frame = ctk.CTkScrollableFrame(self.frame_team_setup, height=360)
+        self.scroll_frame.pack(pady=10, fill="both", expand=True)
+
+        self.db_buttons = {}
+        for idx, p_info in enumerate(POKEMON_DATABASE):
+            t1_n = TYPE_NAMES[p_info["t1"]]
+            t2_n = f"/{TYPE_NAMES[p_info['t2']]}" if p_info["t2"] is not None else ""
+            
+            # Carrega a arte do Pokémon para o botão da lista de seleção
+            foto_pk = carrega_artes(p_info['name'], tamanho=(32, 32))
+
+            btn = ctk.CTkButton(self.scroll_frame, text=f" {p_info['name']} [{t1_n}{t2_n}]", font=("Arial", 12),
+                                image=foto_pk, compound="left", anchor="w",
+                                fg_color="#2b2b2b", border_color=TYPE_DATA[t1_n]["color"], border_width=1, height=40, command=lambda i=idx: self.toggle_team_member(i))
+            btn.pack(fill="x", padx=10, pady=4)
+            self.db_buttons[idx] = btn
+
+        self.selected_team_indices = [idx for current_p in self.my_team for idx, db_p in enumerate(POKEMON_DATABASE) if db_p["name"] == current_p.name]
+        self.update_setup_visuals()
+
+        ctk.CTkButton(self.frame_team_setup, text="AVANÇAR PARA MOVES ➔", height=50, fg_color="#28a745", hover_color="#218838", font=("Arial", 15, "bold"), command=self.go_to_moves_setup).pack(pady=15)
+
+    def filter_pokemon(self, *args):
+        query = self.search_var.get().lower().strip()
+        for idx, p_info in enumerate(POKEMON_DATABASE):
+            btn = self.db_buttons.get(idx)
+            if btn:
+                if query in p_info["name"].lower(): btn.pack(fill="x", padx=10, pady=4)
+                else: btn.pack_forget()
+
+    def toggle_team_member(self, idx):
+        if idx in self.selected_team_indices: self.selected_team_indices.remove(idx)
+        elif len(self.selected_team_indices) < 5: self.selected_team_indices.append(idx)
+        else: self.selected_team_indices[-1] = idx
+        self.update_setup_visuals()
+
+    def clear_all_selections(self):
+        self.selected_team_indices.clear()
+        self.update_setup_visuals()
+
+    def update_setup_visuals(self):
+        self.lbl_setup_counter.configure(text=f"Selecionados: {len(self.selected_team_indices)} de 5")
+        for idx, btn in self.db_buttons.items():
+            btn.configure(fg_color="#1f538d" if idx in self.selected_team_indices else "#2b2b2b")
+
+    def go_to_moves_setup(self):
+        if len(self.selected_team_indices) != 5:
+            self.lbl_setup_counter.configure(text="Erro: Escolha exatamente 5 Pokémon!", text_color="#C22E28")
+            return
+        new_team = []
+        for idx in self.selected_team_indices:
+            db_p = POKEMON_DATABASE[idx]
+            existing = next((p for p in self.my_team if p.name == db_p["name"]), None)
+            new_team.append(existing if existing else Pokemon(db_p["name"], db_p["t1"], db_p["t2"], db_p.get("prefer", "Especial")))
+        self.my_team = new_team
+        self.active_pokemon_index = 0
+        self.build_moves_setup_screen()
+
+    # --- TELA 2: INTERFACE DE ABAS ---
+    def build_moves_setup_screen(self):
+        self.frame_team_setup.pack_forget()
+        self.frame_selection.pack_forget()
+        self.frame_moves_setup.destroy()
+
+        self.frame_moves_setup = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_moves_setup.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(self.frame_moves_setup, text="Passo 2: Clique no Pokémon e use os menus para configurar os Moves", font=("Arial", 18, "bold"), text_color="#F7D02C").pack(pady=(0, 15))
+
+        self.pokemon_tabs_frame = ctk.CTkFrame(self.frame_moves_setup, fg_color="transparent")
+        self.pokemon_tabs_frame.pack(fill="x", pady=5)
+        
+        self.tab_buttons = []
+        for i, p in enumerate(self.my_team):
+            filled_moves = sum(1 for m in p.moves if m and m.name)
+            
+            # Adiciona a arte do Pokémon também nas abas superiores de configuração de golpes
+            foto_aba = carrega_artes(p.name, tamanho=(28, 28))
+
+            btn = ctk.CTkButton(self.pokemon_tabs_frame, text=f" {p.name}\n({filled_moves}/4 Moves)", font=("Arial", 12, "bold"), height=55,
+                                image=foto_aba, compound="top",
+                                fg_color="#1e1e1e", border_width=2, border_color="#444444", command=lambda idx=i: self.switch_active_pokemon(idx))
+            btn.grid(row=0, column=i, padx=6, sticky="ew")
+            self.pokemon_tabs_frame.grid_columnconfigure(i, weight=1)
+            self.tab_buttons.append(btn)
+
+        self.inputs_container = ctk.CTkFrame(self.frame_moves_setup, fg_color="#1a1a1a", border_width=1, border_color="#333333")
+        self.inputs_container.pack(fill="both", expand=True, pady=15, ipady=10)
+
+        self.render_active_pokemon_inputs()
+
+        ctk.CTkButton(self.frame_moves_setup, text="✔ TIME PRONTO! IR PARA ANÁLISE DE COMBATE", height=55,
+                      fg_color="#28a745", hover_color="#218838", font=("Arial", 16, "bold"), command=self.finalize_moves_and_next).pack(pady=10)
+
+    def switch_active_pokemon(self, idx):
+        self.save_current_fields_to_memory()
+        self.active_pokemon_index = idx
+        self.render_active_pokemon_inputs()
+
+    def render_active_pokemon_inputs(self):
+        for widget in self.inputs_container.winfo_children():
+            widget.destroy()
+
+        p = self.my_team[self.active_pokemon_index]
+
+        for i, btn in enumerate(self.tab_buttons):
+            filled = sum(1 for m in self.my_team[i].moves if m and m.name)
+            btn.configure(text=f" {self.my_team[i].name}\n({filled}/4 Moves)", 
+                          fg_color="#1f538d" if i == self.active_pokemon_index else "#1e1e1e", 
+                          border_color="#6390F0" if i == self.active_pokemon_index else "#444444")
+
+        # Layout do cabeçalho da configuração interna com a arte grande ao lado
+        header_frame = ctk.CTkFrame(self.inputs_container, fg_color="transparent")
+        header_frame.pack(anchor="w", padx=20, pady=10)
+        
+        foto_grande = carrega_artes(p.name, tamanho=(45, 45))
+        lbl_img = ctk.CTkLabel(header_frame, text="", image=foto_grande)
+        lbl_img.pack(side="left", padx=(0, 10))
+
+        lbl_info = ctk.CTkLabel(header_frame, text=f"Configurando: {p.name.upper()} | Tipo: {p.get_type_str()} | Foco Nativo: {p.prefer}", font=("Arial", 15, "bold"), text_color="#6390F0")
+        lbl_info.pack(side="left")
+
+        grid_frame = ctk.CTkFrame(self.inputs_container, fg_color="transparent")
+        grid_frame.pack(fill="both", expand=True, padx=10)
+
+        if hasattr(TYPE_NAMES, "keys"):
+            available_types = [TYPE_NAMES[key] for key in sorted(TYPE_NAMES.keys())]
+        else:
+            available_types = sorted([str(t) for t in TYPE_NAMES])
+
+        self.current_entry_slots = []
+
+        for slot in range(4):
+            slot_box = ctk.CTkFrame(grid_frame, fg_color="#2b2b2b", border_width=1, border_color="#444444")
+            slot_box.grid(row=0, column=slot, padx=6, pady=5, sticky="nsew")
+            grid_frame.grid_columnconfigure(slot, weight=1)
+
+            ctk.CTkLabel(slot_box, text=f"Slot de Move {slot+1}", font=("Arial", 11, "bold"), text_color="gray").pack(pady=4)
+
+            m = p.moves[slot]
+            m_name = m.name if m else ""
+            m_type = m.move_type_str if m else "Normal"
+            m_cat = m.category if m else "Físico"
+            m_kind = m.move_kind if m else "Ataque Direto"
+
+            ent_name = ctk.CTkEntry(slot_box, placeholder_text="Nome do Golpe", width=205)
+            ent_name.insert(0, m_name)
+            ent_name.pack(padx=10, pady=5)
+
+            ctk.CTkLabel(slot_box, text="Tipo do Golpe:", font=("Arial", 10), text_color="#aaaaaa").pack()
+            cmb_type = ctk.CTkComboBox(slot_box, values=available_types, width=205, state="readonly")
+            cmb_type.set(m_type)
+            cmb_type.pack(padx=10, pady=5)
+
+            ctk.CTkLabel(slot_box, text="Categoria de Dano:", font=("Arial", 10), text_color="#aaaaaa").pack()
+            cmb_cat = ctk.CTkComboBox(slot_box, values=["Físico", "Especial"], width=205, state="readonly")
+            cmb_cat.set(m_cat)
+            cmb_cat.pack(padx=10, pady=5)
+
+            ctk.CTkLabel(slot_box, text="Propriedade do Golpe:", font=("Arial", 10), text_color="#aaaaaa").pack()
+            cmb_kind = ctk.CTkComboBox(slot_box, values=["Ataque Direto", "Buff/Debuff"], width=205, state="readonly")
+            cmb_kind.set(m_kind)
+            cmb_kind.pack(padx=10, pady=(5, 15))
+
+            self.current_entry_slots.append({"name": ent_name, "type": cmb_type, "cat": cmb_cat, "kind": cmb_kind})
+
+    def save_current_fields_to_memory(self):
+        if not hasattr(self, 'current_entry_slots') or len(self.current_entry_slots) < 4:
+            return
+
+        p = self.my_team[self.active_pokemon_index]
+        for slot in range(4):
+            fields = self.current_entry_slots[slot]
+            name = fields["name"].get().strip()
+            t_str = fields["type"].get()
+            cat = fields["cat"].get()
+            kind = fields["kind"].get()
+
+            if name:
+                p.moves[slot] = Move(name, t_str, cat, kind)
+            else:
+                p.moves[slot] = None
+
+    def finalize_moves_and_next(self):
+        self.save_current_fields_to_memory()
+        self.save_team_to_bin()
+        self.build_main_selection_screen()
+
+    # --- TELA 3: MONTAGEM DO TIME INIMIGO ---
+    def build_main_selection_screen(self):
+        self.frame_team_setup.pack_forget()
+        self.frame_moves_setup.pack_forget()
+        self.frame_results.pack_forget()
+        self.frame_selection.destroy()
+
         self.frame_selection = ctk.CTkFrame(self, fg_color="transparent")
         self.frame_selection.pack(fill="both", expand=True, padx=20, pady=20)
 
-        self.lbl_title = ctk.CTkLabel(self.frame_selection, text="Montar Time Inimigo", font=("Arial", 26, "bold"))
-        self.lbl_title.pack(pady=(0, 5))
+        # Menu Centralizado de Gerenciamento do seu Time Atual
+        team_manager_frame = ctk.CTkFrame(self.frame_selection, fg_color="#1e1e1e", border_width=1, border_color="#333333")
+        team_manager_frame.pack(fill="x", pady=(0, 25))
 
-        self.lbl_subtitle = ctk.CTkLabel(self.frame_selection, text="Selecione até 2 tipos para o Pokémon inimigo:", font=("Arial", 14), text_color="gray")
-        self.lbl_subtitle.pack(pady=(0, 20))
+        center_bar = ctk.CTkFrame(team_manager_frame, fg_color="transparent")
+        center_bar.pack(anchor="center", pady=12)
 
-        # Grade de Botões Coloridos
-        self.grid_frame = ctk.CTkFrame(self.frame_selection, fg_color="transparent")
-        self.grid_frame.pack()
+        badges_frame = ctk.CTkFrame(center_bar, fg_color="transparent")
+        badges_frame.pack(pady=(0, 12))
+        
+        ctk.CTkLabel(badges_frame, text="SEU TIME:", font=("Arial", 11, "bold"), text_color="gray").pack(side="left", padx=10)
+        for p in self.my_team:
+            filled = sum(1 for m in p.moves if m)
+            
+            # Carrega a mini-arte para colocar dentro da badge cinza de status do time atual
+            mini_foto = carrega_artes(p.name, tamanho=(22, 22))
+            
+            lbl_p = ctk.CTkLabel(badges_frame, text=f" {p.name} ({filled} mv) ", font=("Arial", 11, "bold"), 
+                                 image=mini_foto, compound="left", fg_color="#2d2d2d", corner_radius=5)
+            lbl_p.pack(side="left", padx=4)
+
+        buttons_frame = ctk.CTkFrame(center_bar, fg_color="transparent")
+        buttons_frame.pack()
+
+        ctk.CTkButton(buttons_frame, text="⚔️ Alterar os Moves", font=("Arial", 12, "bold"), width=160, height=28, fg_color="#34495e", hover_color="#2c3e50",
+                      command=self.build_moves_setup_screen).pack(side="left", padx=8)
+        
+        ctk.CTkButton(buttons_frame, text="🔄 Alterar o Time", font=("Arial", 12, "bold"), width=160, height=28, fg_color="#7f8c8d", hover_color="#95a5a6",
+                      command=self.build_team_setup_screen).pack(side="left", padx=8)
+
+        # Escolha do Alvo Inimigo
+        ctk.CTkLabel(self.frame_selection, text="Montar Time Inimigo", font=("Arial", 24, "bold")).pack()
+        ctk.CTkLabel(self.frame_selection, text="Selecione até 2 tipos do alvo:", font=("Arial", 14), text_color="gray").pack(pady=5)
+
+        grid_frame = ctk.CTkFrame(self.frame_selection, fg_color="transparent")
+        grid_frame.pack()
 
         self.type_buttons = []
-        row_idx, col_idx = 0, 0
+        row, col = 0, 0
         for t_name, info in TYPE_DATA.items():
-            # Cria o botão com a cor oficial do tipo
-            btn = ctk.CTkButton(self.grid_frame, text=t_name.upper(), width=120, height=45,
-                                fg_color=info["color"], hover_color=info["color"], font=("Arial", 12, "bold"),
-                                text_color="#FFFFFF" if t_name not in ["Electric", "Ice"] else "#111111",
-                                command=lambda t_id=info["id"]: self.toggle_type(t_id))
-            btn.grid(row=row_idx, column=col_idx, padx=6, pady=6)
+            btn = ctk.CTkButton(grid_frame, text=t_name.upper(), width=130, height=45, fg_color=info["color"], font=("Arial", 11, "bold"),
+                                text_color="#111111" if t_name in ["Electric", "Ice"] else "#FFFFFF", command=lambda t_id=info["id"]: self.toggle_type(t_id))
+            btn.grid(row=row, column=col, padx=5, pady=5)
             self.type_buttons.append((btn, info["color"]))
-            
-            col_idx += 1
-            if col_idx > 5:
-                col_idx = 0
-                row_idx += 1
+            col += 1
+            if col > 5: col = 0; row += 1
 
-        # Checkbox e Ações
-        self.actions_frame = ctk.CTkFrame(self.frame_selection, fg_color="transparent")
-        self.actions_frame.pack(pady=20)
+        actions = ctk.CTkFrame(self.frame_selection, fg_color="transparent")
+        actions.pack(pady=15)
 
         self.var_confirmed = ctk.BooleanVar(value=True)
-        self.chk_confirmed = ctk.CTkCheckBox(self.actions_frame, text="Confirmado", font=("Arial", 14), variable=self.var_confirmed)
-        self.chk_confirmed.grid(row=0, column=0, padx=10)
+        ctk.CTkCheckBox(actions, text="Confirmado", font=("Arial", 14), variable=self.var_confirmed).grid(row=0, column=0, padx=10)
+        ctk.CTkButton(actions, text="Próximo Pokémon ->", font=("Arial", 13, "bold"), command=self.add_enemy).grid(row=0, column=1, padx=10)
+        ctk.CTkButton(actions, text="Desfazer", font=("Arial", 13), fg_color="#555555", command=self.undo_enemy).grid(row=0, column=2, padx=10)
 
-        self.btn_next = ctk.CTkButton(self.actions_frame, text="Próximo Pokémon ->", font=("Arial", 13, "bold"), fg_color="#1f538d", command=self.add_enemy)
-        self.btn_next.grid(row=0, column=1, padx=10)
-
-        self.btn_undo = ctk.CTkButton(self.actions_frame, text="Desfazer Último", font=("Arial", 13), fg_color="#555555", hover_color="#777777", command=self.undo_enemy)
-        self.btn_undo.grid(row=0, column=2, padx=10)
-
-        # Status Inimigos Adicionados
         self.lbl_added = ctk.CTkLabel(self.frame_selection, text="Inimigos Adicionados: Nenhum", font=("Arial", 14, "italic"), text_color="#A8A77A")
-        self.lbl_added.pack(pady=(10, 20))
+        self.lbl_added.pack(pady=10)
 
-        self.btn_analyze = ctk.CTkButton(self.frame_selection, text="✔ CALCULAR MELHOR ESCOLHA", height=50, 
-                                         fg_color="#28a745", hover_color="#218838", font=("Arial", 16, "bold"),
-                                         command=self.show_results)
-        self.btn_analyze.pack()
-
-        # ======================================
-        # TELA 2: RESULTADOS (LOG LIMPO)
-        # ======================================
-        self.frame_results = ctk.CTkFrame(self, fg_color="transparent")
-        
-        self.lbl_res_title = ctk.CTkLabel(self.frame_results, text="ORDEM SUGERIDA DE ENVIO", font=("Arial", 26, "bold"), text_color="#28a745")
-        self.lbl_res_title.pack(pady=10)
-
-        self.lbl_res_subtitle = ctk.CTkLabel(self.frame_results, text="Do melhor (topo) para o pior (base) contra o time informado:", font=("Arial", 14, "italic"), text_color="gray")
-        self.lbl_res_subtitle.pack(pady=(0, 10))
-
-        self.textbox_results = ctk.CTkTextbox(self.frame_results, width=700, height=400, font=("Consolas", 16))
-        self.textbox_results.pack(pady=10)
-
-        self.btn_back = ctk.CTkButton(self.frame_results, text="<- Voltar e Refazer Nova Análise", font=("Arial", 14), command=self.back_to_selection)
-        self.btn_back.pack(pady=10)
-
-
-    # --- LÓGICA DE INTERAÇÃO ---
+        ctk.CTkButton(self.frame_selection, text="✔ CALCULAR MELHOR ESCOLHA", height=50, fg_color="#28a745", hover_color="#218838", font=("Arial", 16, "bold"), command=self.show_results).pack()
 
     def toggle_type(self, type_id):
-        if type_id in self.current_selected_types:
-            self.current_selected_types.remove(type_id)
-        elif len(self.current_selected_types) < 2:
-            self.current_selected_types.append(type_id)
-        else:
-            self.current_selected_types[1] = type_id
-
+        if type_id in self.current_selected_types: self.current_selected_types.remove(type_id)
+        elif len(self.current_selected_types) < 2: self.current_selected_types.append(type_id)
+        else: self.current_selected_types[1] = type_id
         self.update_button_visuals()
 
     def update_button_visuals(self):
-        for i, (btn, orig_color) in enumerate(self.type_buttons):
-            if i in self.current_selected_types:
-                # Se selecionado, ganha borda grossa e destaca o texto
-                btn.configure(border_width=4, border_color="#FFFFFF")
-            else:
-                # Volta ao normal
-                btn.configure(border_width=0)
+        for i, (btn, _) in enumerate(self.type_buttons):
+            btn.configure(border_width=4 if i in self.current_selected_types else 0, border_color="#FFFFFF")
 
     def add_enemy(self):
-        if not self.current_selected_types:
-            return 
-        
-        t1 = self.current_selected_types[0]
-        t2 = self.current_selected_types[1] if len(self.current_selected_types) > 1 else None
-        
-        new_enemy = EnemyPokemon(t1, t2, self.var_confirmed.get())
-        self.enemy_team.append(new_enemy)
-
+        if not self.current_selected_types: return
+        t1, t2 = self.current_selected_types[0], (self.current_selected_types[1] if len(self.current_selected_types) > 1 else None)
+        self.enemy_team.append(EnemyPokemon(t1, t2, self.var_confirmed.get()))
         self.update_enemy_list_text()
-
-        # Reseta botões
         self.current_selected_types = []
         self.update_button_visuals()
 
     def undo_enemy(self):
-        if self.enemy_team:
-            self.enemy_team.pop()
-            self.update_enemy_list_text()
+        if self.enemy_team: self.enemy_team.pop(); self.update_enemy_list_text()
 
     def update_enemy_list_text(self):
-        if not self.enemy_team:
-            self.lbl_added.configure(text="Inimigos Adicionados: Nenhum")
-        else:
-            names = [f"[{e.display_name}]" for e in self.enemy_team]
-            self.lbl_added.configure(text=f"Time Inimigo ({len(self.enemy_team)}): " + ", ".join(names))
+        if not self.enemy_team: self.lbl_added.configure(text="Inimigos Adicionados: Nenhum")
+        else: self.lbl_added.configure(text=f"Time Inimigo ({len(self.enemy_team)}): " + ", ".join([f"[{e.display_name}]" for e in self.enemy_team]))
 
+    # --- TELA 4: RESULTADOS ---
     def show_results(self):
         if not self.enemy_team:
-            self.lbl_added.configure(text="Adicione pelo menos um Pokémon inimigo antes de calcular!", text_color="#C22E28")
+            self.lbl_added.configure(text="Adicione ao menos um Pokémon inimigo!", text_color="#C22E28")
             return
 
-        # Roda o cálculo
         evaluate_team(self.my_team, self.enemy_team)
-        
-        # Ordena: maior pontuação vai para o topo da lista
         self.my_team.sort(key=lambda p: p.score, reverse=True)
 
-        # Monta a exibição limpa (Apenas Nome, Posição e Tipos)
-        output = "\n"
-        output += " 🥇 DEVE IR PRIMEIRO (Melhor Escolha):\n"
-        output += f" ➔ 1º LUGAR: {self.my_team[0].name.upper()} ({self.my_team[0].get_type_str()})\n"
-        output += " —" * 28 + "\n\n"
+        self.frame_selection.pack_forget()
+        self.frame_results.destroy()
+
+        self.frame_results = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_results.pack(fill="both", expand=True, padx=20, pady=20)
         
-        output += " 📋 ORDEM DE RESERVAS SUGERIDA:\n"
+        ctk.CTkLabel(self.frame_results, text="ORDEM DE ENVIO IDEAL (Mecânica de Moves Deslizantes)", font=("Arial", 20, "bold"), text_color="#28a745").pack(pady=5)
+
+        textbox = ctk.CTkTextbox(self.frame_results, width=900, height=450, font=("Consolas", 14))
+        textbox.pack(pady=10)
+
+        best = self.my_team[0]
+        output = f"\n 🥇 MELHOR OPÇÃO CONTRA O INIMIGO:\n"
+        output += f" ➔ 1º LUGAR: {best.name.upper()} ({best.get_type_str()}) | Eficácia: {best.score} pts\n"
+        output += "    Moves Considerados:\n"
+        for m in best.moves:
+            if m: output += f"     · {m.name:<18} | Tipo: {m.move_type_str:<10} | Cat: {m.category:<9} | {m.move_kind}\n"
+        output += " —" * 40 + "\n\n"
+        
+        output += " 📋 FILA DE RESERVA DETALHADA:\n"
         for i in range(1, len(self.my_team)):
             p = self.my_team[i]
-            output += f"   {i+1}º Lugar: {p.name:<22} | Tipo: {p.get_type_str()}\n"
+            m_count = sum(1 for m in p.moves if m)
+            output += f"   {i+1}º Lugar: {p.name:<20} | Pontos: {p.score:<3} | Tipo: {p.get_type_str():<14} | {m_count} moves configurados\n"
             
-        output += "\n " + "—" * 28 + "\n"
-        output += " ⚠️ EVITE (Último lugar no ranking):\n"
-        p_worst = self.my_team[-1]
-        output += f" ➔ {len(self.my_team)}º LUGAR: {p_worst.name.upper()} ({p_worst.get_type_str()})\n"
+        output += "\n " + "—" * 40 + "\n"
+        output += f" ⚠️ EVITE ENVIAR:\n ➔ {len(self.my_team)}º LUGAR: {self.my_team[-1].name.upper()} ({self.my_team[-1].get_type_str()}) | Pontuação: {self.my_team[-1].score} pts\n"
 
-        self.textbox_results.delete("1.0", "end")
-        self.textbox_results.insert("1.0", output)
-
-        # Alterna para a tela de log limpo
-        self.frame_selection.pack_forget()
-        self.frame_results.pack(fill="both", expand=True, padx=20, pady=20)
+        textbox.insert("1.0", output)
+        ctk.CTkButton(self.frame_results, text="<- Voltar para Nova Análise", font=("Arial", 14), command=self.back_to_selection).pack(pady=10)
 
     def back_to_selection(self):
         self.enemy_team = []
-        self.lbl_added.configure(text="Inimigos Adicionados: Nenhum", text_color="#A8A77A")
-        self.frame_results.pack_forget()
-        self.frame_selection.pack(fill="both", expand=True, padx=20, pady=20)
-
+        self.build_main_selection_screen()
 
 if __name__ == "__main__":
     app = App()
